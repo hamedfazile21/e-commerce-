@@ -1,23 +1,47 @@
 import { Injectable } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-
+import { InjectRepository } from '@nestjs/typeorm';
+import { User } from './entities/user.entity';
+import { Repository } from 'typeorm';
+import { createInvalidObservableTypeError } from 'rxjs/internal/util/throwUnobservableError';
+import { asyncWrapProviders } from 'async_hooks';
+import * as bcrypt from 'bcrypt';
 @Injectable()
 export class UserService {
-  create(createUserDto: CreateUserDto) {
-    return 'This action adds a new user';
+  constructor(
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+  ) {}
+
+  async findAll(): Promise<User[]> {
+    return await this.userRepository.find();
   }
 
-  findAll() {
-    return `This action returns all user`;
+  // TODO : handle the error if the email already exists
+  async create(createUserDto: CreateUserDto): Promise<User> {
+    const { password, ...rest } = createUserDto;
+
+    const salt = await bcrypt.hash(password, 10);
+    const handelHash = await bcrypt.hash(password, salt);
+
+    const newUser = this.userRepository.create({
+      ...rest,
+      password: handelHash,
+    });
+    return await this.userRepository.save(newUser);
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} user`;
+  async findByEmail(email: string): Promise<User | null> {
+    return await this.userRepository.findOne({ where: { email } });
   }
 
-  update(id: number, updateUserDto: UpdateUserDto) {
-    return `This action updates a #${id} user`;
+  async findOne(id: number): Promise<User | null> {
+    return await this.userRepository.findOne({ where: { id } });
+  }
+
+  async update(id: number, updateUserDto: UpdateUserDto) {
+    return await this.userRepository.update(id, updateUserDto);
   }
 
   remove(id: number) {

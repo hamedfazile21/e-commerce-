@@ -1,1 +1,37 @@
-export class CreateUserDto {}
+import {
+  IsEmail,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
+import { UserRole } from '../entities/user.entity';
+
+export class CreateUserDto {
+  @IsEmail({}, { message: 'Please provide a valid email address' })
+  @IsNotEmpty({ message: 'Email is required' })
+  email!: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'Password is required' })
+  @MinLength(6, { message: 'Password must be at least 6 characters long' })
+  password!: string;
+
+  // TODO : fix the message
+  @IsString()
+  @IsNotEmpty({ message: 'First name is required' })
+  name!: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'Last name is required' })
+  last_name!: string;
+
+  @IsEnum(UserRole)
+  @IsOptional()
+  role?: UserRole;
+
+  @IsString()
+  @IsOptional()
+  avatar_utl?: string; // Kept matching your exact entity typo 'avatar_utl'
+}
