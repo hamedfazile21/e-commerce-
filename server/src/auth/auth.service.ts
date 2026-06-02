@@ -4,17 +4,25 @@ import { UpdateAuthDto } from './dto/update-auth.dto';
 import { UserService } from 'src/user/user.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { IHandelTokenAndResponse, IJwtPayload } from './interfaces/google-user.interface';
+import {
+  IHandelTokenAndResponse,
+  IJwtPayload,
+} from './interfaces/google-user.interface';
 import { User } from 'src/user/entities/user.entity';
 import * as bcrypt from 'bcrypt';
 import { Response } from 'express';
 import { LoginDto } from './dto/login-auth.dto';
+import { Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
 @Injectable()
 export class AuthService {
   constructor(
     private readonly usersService: UserService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
   ) {}
 
   private async handleTokensAndResponse(
@@ -54,7 +62,7 @@ export class AuthService {
       maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
-    const sendData : IHandelTokenAndResponse = {
+    const sendData: IHandelTokenAndResponse = {
       user: {
         id: user.id,
         email: user.email,
@@ -62,8 +70,8 @@ export class AuthService {
         last_name: user.last_name,
         avatar_url: user.avatar_url,
         role: user.role,
-        created_at : user.created_at,
-        updated_at : user.updated_at
+        created_at: user.created_at,
+        updated_at: user.updated_at,
       },
       token: accessToken,
     };
@@ -71,8 +79,9 @@ export class AuthService {
   }
 
   async validateUser(loginDto: LoginDto): Promise<User> {
-    const user = await this.usersService.findByEmail(loginDto.email);
-
+    const user = await this.userRepository.findOne({
+      where: { email: loginDto.email },
+    });
     if (!user || !user.password) {
       throw new UnauthorizedException('Invalid email or password');
     }
@@ -89,7 +98,10 @@ export class AuthService {
     return user;
   }
 
-  async loginWithEmail(loginDto: LoginDto, res: Response): Promise<IHandelTokenAndResponse | void> {
+  async loginWithEmail(
+    loginDto: LoginDto,
+    res: Response,
+  ): Promise<IHandelTokenAndResponse | void> {
     const user = await this.validateUser(loginDto);
     return this.handleTokensAndResponse(user, res);
   }

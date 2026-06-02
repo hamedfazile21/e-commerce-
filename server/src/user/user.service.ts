@@ -1,12 +1,21 @@
-import { Injectable } from '@nestjs/common';
+import {
+  ClassSerializerInterceptor,
+  ConflictException,
+  HttpStatus,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+  UseInterceptors,
+} from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import { createInvalidObservableTypeError } from 'rxjs/internal/util/throwUnobservableError';
 import { asyncWrapProviders } from 'async_hooks';
 import * as bcrypt from 'bcrypt';
+import { IDuplicateResponse } from './interface/user.interface';
 @Injectable()
 export class UserService {
   constructor(
@@ -14,37 +23,79 @@ export class UserService {
     private readonly userRepository: Repository<User>,
   ) {}
 
+  private readonly userSelectFields: { [key: string]: boolean } = {
+    id: true,
+    name: true,
+    email: true,
+    avatar_url: true,
+    created_at: true,
+    google_id: true,
+    last_name: true,
+    role: true,
+    updated_at: true,
+  };
+
   async findAll(): Promise<User[]> {
-    return await this.userRepository.find();
+    return await this.userRepository.find({
+      select: this.userSelectFields,
+    });
   }
 
-  // TODO : handle the error if the email already exists
-  async create(createUserDto: CreateUserDto): Promise<User> {
+  async create(
+    createUserDto: CreateUserDto,
+  ): Promise<User | IDuplicateResponse | undefined> {
     const { password, ...rest } = createUserDto;
 
-    const salt = await bcrypt.hash(password, 10);
-    const handelHash = await bcrypt.hash(password, salt);
+    const handelHash = await bcrypt.hash(password, 10);
+    try {
+      const newUser = this.userRepository.create({
+        ...rest,
+        password: handelHash,
+      });
+      return await this.userRepository.save(newUser);
+    } catch (error: any) {
+      if (
+        error.code === 'ER_DUP_ENTRY' ||
+        error.errno === 1062 ||
+        error.code === '23505'
+      ) {
+        throw new ConflictException('Email address already exists');
+      }
 
-    const newUser = this.userRepository.create({
-      ...rest,
-      password: handelHash,
+      console.error('User creation failed:', error);
+      throw new InternalServerErrorException(
+        'An unexpected error occurred while creating the account',
+      );
+    }
+  }
+
+  async findOne(id: number | null, email: string | ''): Promise<User | null> {
+    const relatedQuery = id ? { id } : { email };
+    const useByQueryBuilder = await this.userRepository.findOne({
+      where: relatedQuery,
+      select: this.userSelectFields,
     });
-    return await this.userRepository.save(newUser);
-  }
 
-  async findByEmail(email: string): Promise<User | null> {
-    return await this.userRepository.findOne({ where: { email } });
-  }
-
-  async findOne(id: number): Promise<User | null> {
-    return await this.userRepository.findOne({ where: { id } });
+    if (useByQueryBuilder) {
+      return useByQueryBuilder;
+    } else {
+      throw new NotFoundException('User not found');
+    }
   }
 
   async update(id: number, updateUserDto: UpdateUserDto) {
-    return await this.userRepository.update(id, updateUserDto);
+    await this.userRepository.update(id, updateUserDto);
+    return this.userRepository.findOne({ where: { id } });
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} user`;
+  async remove(id: number) {
+    const result = await this.userRepository.delete(id);
+    if (result.affected === 0) {
+      throw new NotFoundException('User not found');
+    }
+
+    return {
+      message: 'User deleted successfully',
+    };
   }
 }
