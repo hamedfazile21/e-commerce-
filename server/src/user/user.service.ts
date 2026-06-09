@@ -84,8 +84,13 @@ export class UserService {
   }
 
   async update(id: number, updateUserDto: UpdateUserDto) {
+    const currentUser = this.userRepository.findOne({ where: { id } });
+    if (!currentUser) {
+      throw new NotFoundException('User Not Found');
+    }
     await this.userRepository.update(id, updateUserDto);
-    return this.userRepository.findOne({ where: { id } });
+
+    return currentUser;
   }
 
   async remove(id: number) {
